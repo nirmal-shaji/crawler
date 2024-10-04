@@ -2,6 +2,31 @@ const puppeteer = require('puppeteer');
 const { generateHash, readPreviousHash, saveCurrentHash } = require('../utils/hashUtils');
 const Course = require('../models/Course');
 
+async function processCourses(page, selectedDiv) {
+  return await page.evaluate((selectedDiv) => {
+    const courseElements = document.querySelectorAll(selectedDiv);
+    const coursesData = [];
+
+    courseElements.forEach(el => {
+      const courseLink = el.querySelector('a')?.getAttribute('href');
+      const courseTitle = el.querySelector('a')?.innerText.trim();
+      const institution = el.querySelector('p')?.innerText.trim();
+      const description = el.nextElementSibling?.querySelector('p')?.innerText.trim();
+
+      // Validate the scraped data before pushing it to the array
+      if (courseTitle && institution) {
+        coursesData.push({
+          courseTitle,
+          courseLink: courseLink ? `https://www.studywithnewzealand.govt.nz${courseLink}` : '',
+          institution,
+          description: description || '', // Default to empty string if no description
+        });
+      }
+    });
+
+    return coursesData;
+  }, selectedDiv);
+}
 
 async function fetchCourses(url, selectedArea, selectedDiv) {
   const browser = await puppeteer.launch();
@@ -32,34 +57,35 @@ async function fetchCourses(url, selectedArea, selectedDiv) {
 
     console.log('Changes detected, crawling the data...');
 
-    const courses = await page.evaluate((selectedDiv) => {
-      const courseElements = document.querySelectorAll(selectedDiv);
-      const coursesData = [];
+    // Use the new processCourses function to extract and validate course data
+    const courses = await processCourses(page, selectedDiv);
 
-      courseElements.forEach(el => {
-        const courseLink = el.querySelector('a')?.getAttribute('href');
-        const courseTitle = el.querySelector('a')?.innerText.trim();
-        const institution = el.querySelector('p')?.innerText.trim();
-        const description = el.nextElementSibling?.querySelector('p')?.innerText.trim();
-
-        coursesData.push({
-          courseTitle,
-          courseLink: courseLink ? `https://www.studywithnewzealand.govt.nz${courseLink}` : '',
-          institution,
-          description,
-        });
-      });
-
-      return coursesData;
-    }, selectedDiv);
+    if (courses.length === 0) {
+      console.log('No courses found to save.');
+      return;
+    }
 
     console.log('Courses:', courses);
 
-    // Save courses to MongoDB
-    await Course.insertMany(courses, { ordered: false }),
+     // Save courses to MongoDB with duplicate check
+     for (const course of courses) {
+        const existingCourse = await Course.findOne({
+          courseTitle: course.courseTitle,
+          courseLink: course.courseLink,
+        });
+  
+        if (!existingCourse) {
+          await Course.create(course);
+          console.log(`Course saved: ${course.courseTitle}`);
+        } else {
+          console.log(`Course already exists: ${course.courseTitle}`);
+        }
+      }
+  
     console.log('Courses saved to MongoDB');
 
     saveCurrentHash(currentHash);
+    process.exit(0)
 
   } catch (error) {
     console.error('Error fetching the data:', error);
