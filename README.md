@@ -24,3 +24,4 @@ To run this project, you will need:
    ```bash
    git clone https://github.com/nirmal-shaji/crawler.git
    npm install
+   node app.js
