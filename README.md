@@ -23,5 +23,6 @@ To run this project, you will need:
 1. **Clone the Repository**:
    ```bash
    git clone https://github.com/nirmal-shaji/crawler.git
+   cd crawler
    npm install
    node app.js
